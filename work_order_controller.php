@@ -1,192 +1,146 @@
 <?php
-// LabMind/modules/reception/work_order_controller.php
-require_once __DIR__ . '/../../config.php';
-require_once __DIR__ . '/../../includes/db_connection.php';
-require_once __DIR__ . '/../../includes/auth_middleware.php';
+// C:\xampp\htdocs\labmind\modules\reception\work_order_controller.php
 
-requireRole(['administrator', 'receptionist', 'lab_technician']); // Permisos para este controlador
+// Asegúrate de incluir tus archivos de configuración y base de datos si es necesario
+// Las rutas deben ser correctas desde este controlador (modules/reception)
+require_once dirname(__DIR__, 2) . '/config.php'; // Desde modules/reception/ sube a labmind/ y encuentra config.php
+require_once dirname(__DIR__, 2) . '/includes/db_connection.php'; // Lo mismo para db_connection.php
+require_once dirname(__DIR__, 2) . '/includes/functions.php'; // Incluir funciones generales
+require_once dirname(__DIR__, 2) . '/includes/auth_middleware.php'; // Para control de sesión, si aplica
 
-$conn = getDbConnection();
+// Opcional: Verificar sesión si este controlador requiere autenticación
+// auth_middleware::check_session();
 
-$action = $_REQUEST['action'] ?? ''; // Obtener la acción del formulario o URL
+// Las variables $module, $section, $action, $id ya vienen de index.php
+// por lo que no necesitas redefinirlas aquí si tu index.php las incluye globalmente
+// o las pasa de alguna forma. Asumiremos que están disponibles.
+// Si no están disponibles globalmente, deberías pasarlas como argumentos a tu controlador
+// o hacer que el controlador las obtenga del request (similar a como lo hacía index.php).
+// Para simplificar, asumiremos que están en el ámbito global o las puedes descomentar y ajustar si es necesario.
 
-switch ($action) {
-    case 'create':
-        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-            // Recoger datos del formulario
-            $patient_id = $_POST['patient_id'] ?? null;
-            $doctor_id = $_POST['doctor_id'] ?? null;
-            $study_ids = $_POST['study_ids'] ?? [];
-            $total_amount = $_POST['total_amount'] ?? 0;
-            $notes = $_POST['notes'] ?? '';
-            $is_paid = isset($_POST['is_paid']) ? 1 : 0;
-            $created_by = $_SESSION['user_id'] ?? null;
+// Globalmente, $module, $section, $action, $id ya vienen definidos por index.php
+global $module, $section, $action, $id;
 
-            if (!$patient_id || empty($study_ids)) {
-                $_SESSION['message'] = "Paciente y estudios son obligatorios.";
-                $_SESSION['message_type'] = "error";
-                header('Location: ' . BASE_URL . 'reception/work_order/insert');
-                exit();
-            }
+// =========================================================================
+// Función para obtener los datos de órdenes de trabajo para DataTables
+// =========================================================================
+function getDataTablesWorkOrders() {
+    $data = [];
+    $db = new DatabaseConnection();
 
-            // Generar número de folio (ejemplo simple, mejora para uno único globalmente)
-            $folio_number = 'LM-' . date('YmdHis') . rand(100, 999);
+    $draw = isset($_POST['draw']) ? intval($_POST['draw']) : 1;
+    $start = isset($_POST['start']) ? intval($_POST['start']) : 0;
+    $length = isset($_POST['length']) ? intval($_POST['length']) : 10;
+    $search_value = isset($_POST['search']['value']) ? $_POST['search']['value'] : '';
 
-            // Iniciar transacción
-            $conn->begin_transaction();
+    // Ordenamiento
+    $order_column_index = isset($_POST['order'][0]['column']) ? intval($_POST['order'][0]['column']) : 0;
+    // IMPORTANTE: Asegúrate de que los nombres de las columnas aquí coincidan con el SELECT y la DB
+    // Las columnas que DataTables envía para ordenar son 0-indexed, y aquí mapeamos a nombres de DB.
+    // 'id' (col 0), 'patient_name' (col 1), 'reception_date' (col 2), 'status' (col 3), acciones (col 4)
+    $columns = ['wo.id', 'p.name', 'wo.reception_date', 'wo.status']; // p.name para el nombre del paciente
+    $order_direction = isset($_POST['order'][0]['dir']) ? $_POST['order'][0]['dir'] : 'asc';
+    $order_by = $columns[$order_column_index];
 
-            try {
-                // Insertar en work_orders
-                $stmt_order = $conn->prepare("INSERT INTO work_orders (patient_id, doctor_id, folio_number, total_amount, notes, is_paid, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)");
-                $stmt_order->bind_param("iisdsii", $patient_id, $doctor_id, $folio_number, $total_amount, $notes, $is_paid, $created_by);
-                $stmt_order->execute();
-                $work_order_id = $stmt_order->insert_id;
-                $stmt_order->close();
+    // Consulta SQL base con JOIN para obtener el nombre del paciente
+    $sql_base = "SELECT wo.id, p.name AS patient_name, wo.reception_date, wo.status 
+                 FROM work_orders wo 
+                 JOIN patients p ON wo.patient_id = p.id";
+    
+    // Consultas para el conteo total
+    $sql_count_base = "SELECT COUNT(wo.id) AS total 
+                      FROM work_orders wo 
+                      JOIN patients p ON wo.patient_id = p.id";
 
-                // Insertar estudios en work_order_studies
-                foreach ($study_ids as $study_id) {
-                    // Obtener precio actual del estudio
-                    $stmt_study_price = $conn->prepare("SELECT price FROM studies WHERE id = ?");
-                    $stmt_study_price->bind_param("i", $study_id);
-                    $stmt_study_price->execute();
-                    $result_price = $stmt_study_price->get_result();
-                    $study_price = $result_price->fetch_assoc()['price'] ?? 0;
-                    $stmt_study_price->close();
+    $where_clause = "";
+    if (!empty($search_value)) {
+        // Filtrar por nombre de paciente O status de orden de trabajo
+        $search_escaped = $db->escape_string($search_value);
+        $where_clause = " WHERE p.name LIKE '%{$search_escaped}%' OR wo.status LIKE '%{$search_escaped}%'";
+    }
 
-                    $stmt_wo_study = $conn->prepare("INSERT INTO work_order_studies (work_order_id, study_id, study_price) VALUES (?, ?, ?)");
-                    $stmt_wo_study->bind_param("iid", $work_order_id, $study_id, $study_price);
-                    $stmt_wo_study->execute();
-                    $stmt_wo_study->close();
-                }
+    // Obtener total de registros sin filtrar
+    $total_records_query = $db->query(str_replace("SELECT wo.id, p.name AS patient_name, wo.reception_date, wo.status", "SELECT COUNT(wo.id)", $sql_base));
+    $total_records_count = $db->fetch_assoc($total_records_query)['total'];
 
-                // Generar QR Code Link (esto es una URL de ejemplo, el QR se generaría en el front-end o en un servicio)
-                $qr_code_link = BASE_URL . 'results/view?folio=' . urlencode($folio_number);
-                $stmt_update_qr = $conn->prepare("UPDATE work_orders SET qr_code_link = ? WHERE id = ?");
-                $stmt_update_qr->bind_param("si", $qr_code_link, $work_order_id);
-                $stmt_update_qr->execute();
-                $stmt_update_qr->close();
+    // Obtener total de registros filtrados
+    $total_filtered_records_query = $db->query(str_replace("SELECT wo.id, p.name AS patient_name, wo.reception_date, wo.status", "SELECT COUNT(wo.id)", $sql_base) . " {$where_clause}");
+    $total_filtered_records_count = $db->fetch_assoc($total_filtered_records_query)['total'];
 
-                $conn->commit();
-                $_SESSION['message'] = "Orden de trabajo creada con éxito. Folio: " . $folio_number;
-                $_SESSION['message_type'] = "success";
-            } catch (mysqli_sql_exception $e) {
-                $conn->rollback();
-                $_SESSION['message'] = "Error al crear la orden de trabajo: " . $e->getMessage();
-                $_SESSION['message_type'] = "error";
-            }
-            header('Location: ' . BASE_URL . 'reception/work_order/insert');
-            exit();
+    // Consulta SQL con filtrado, ordenamiento y paginación
+    $sql = "{$sql_base} {$where_clause} ORDER BY {$order_by} {$order_direction} LIMIT {$start}, {$length}";
+
+    $result = $db->query($sql);
+
+    if ($result) {
+        while ($row = $db->fetch_assoc($result)) {
+            $data[] = [
+                $row['id'],
+                $row['patient_name'], // Ahora sí existe en el resultado de la consulta
+                $row['reception_date'],
+                $row['status'],
+                // Columna de acciones (ej. botones de editar/ver)
+                '<a href="' . BASE_URL . 'reception/work_order/view/' . $row['id'] . '">Ver</a> | ' .
+                '<a href="' . BASE_URL . 'reception/work_order/edit/' . $row['id'] . '">Editar</a>'
+            ];
         }
-        break;
+    }
 
-    case 'list':
-        // Lógica para listar órdenes de trabajo
-        $orders = [];
-        $query = "SELECT wo.*, p.first_name AS patient_fname, p.last_name AS patient_lname,
-                         d.first_name AS doctor_fname, d.last_name AS doctor_lname
-                  FROM work_orders wo
-                  JOIN patients p ON wo.patient_id = p.id
-                  LEFT JOIN doctors d ON wo.doctor_id = d.id
-                  ORDER BY wo.order_date DESC";
-        $result = $conn->query($query);
-        if ($result) {
-            while ($row = $result->fetch_assoc()) {
-                $orders[] = $row;
-            }
-        }
-        // Puedes pasar $orders a una vista o devolver como JSON
-        // header('Content-Type: application/json');
-        // echo json_encode(['success' => true, 'data' => $orders]);
-        break;
+    $db->close_connection();
 
-    case 'get_details':
-        // Lógica para obtener detalles de una orden específica (por ID o folio)
-        $order_id = $_GET['id'] ?? null; // o folio
-        if ($order_id) {
-            $stmt = $conn->prepare("SELECT wo.*, p.first_name AS patient_fname, p.last_name AS patient_lname,
-                                       d.first_name AS doctor_fname, d.last_name AS doctor_lname
-                                FROM work_orders wo
-                                JOIN patients p ON wo.patient_id = p.id
-                                LEFT JOIN doctors d ON wo.doctor_id = d.id
-                                WHERE wo.id = ?");
-            $stmt->bind_param("i", $order_id);
-            $stmt->execute();
-            $result = $stmt->get_result();
-            $order_details = $result->fetch_assoc();
-            $stmt->close();
-
-            if ($order_details) {
-                // Obtener estudios asociados
-                $stmt_studies = $conn->prepare("SELECT wos.*, s.study_name FROM work_order_studies wos JOIN studies s ON wos.study_id = s.id WHERE wos.work_order_id = ?");
-                $stmt_studies->bind_param("i", $order_id);
-                $stmt_studies->execute();
-                $result_studies = $stmt_studies->get_result();
-                $order_details['studies'] = [];
-                while ($study = $result_studies->fetch_assoc()) {
-                    $order_details['studies'][] = $study;
-                }
-                $stmt_studies->close();
-
-                header('Content-Type: application/json');
-                echo json_encode(['success' => true, 'data' => $order_details]);
-            } else {
-                header('Content-Type: application/json');
-                echo json_encode(['success' => false, 'message' => 'Orden no encontrada']);
-            }
-        }
-        break;
-
-    case 'update':
-        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-            // Lógica para actualizar una orden de trabajo existente
-            // Similar a 'create' pero con UPDATE y manejo de work_order_studies (INSERT/DELETE)
-            // Asegúrate de que solo los campos permitidos sean actualizables.
-            $_SESSION['message'] = "Funcionalidad de actualización pendiente.";
-            $_SESSION['message_type'] = "info";
-            header('Location: ' . BASE_URL . 'reception/work_order/list'); // Redirige a la lista
-            exit();
-        }
-        break;
-
-    case 'delete':
-        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-            // Lógica para eliminar una orden de trabajo
-            $order_id = $_POST['id'] ?? null;
-            if ($order_id) {
-                $conn->begin_transaction();
-                try {
-                    $stmt = $conn->prepare("DELETE FROM work_order_studies WHERE work_order_id = ?");
-                    $stmt->bind_param("i", $order_id);
-                    $stmt->execute();
-                    $stmt->close();
-
-                    $stmt = $conn->prepare("DELETE FROM work_orders WHERE id = ?");
-                    $stmt->bind_param("i", $order_id);
-                    $stmt->execute();
-                    $stmt->close();
-
-                    $conn->commit();
-                    $_SESSION['message'] = "Orden de trabajo eliminada con éxito.";
-                    $_SESSION['message_type'] = "success";
-                } catch (mysqli_sql_exception $e) {
-                    $conn->rollback();
-                    $_SESSION['message'] = "Error al eliminar la orden: " . $e->getMessage();
-                    $_SESSION['message_type'] = "error";
-                }
-            } else {
-                $_SESSION['message'] = "ID de orden no proporcionado.";
-                $_SESSION['message_type'] = "error";
-            }
-            header('Location: ' . BASE_URL . 'reception/work_order/list');
-            exit();
-        }
-        break;
-
-    default:
-        // Si se accede sin una acción específica (ej. para APIs RESTful)
-        header("HTTP/1.0 400 Bad Request");
-        echo json_encode(['success' => false, 'message' => 'Acción no válida']);
-        break;
+    return [
+        "draw"            => $draw,
+        "recordsTotal"    => $total_records_count,
+        "recordsFiltered" => $total_filtered_records_count,
+        "data"            => $data
+    ];
 }
 
-// No cerrar conexión aquí si se usa getDbConnection() y se requiere para el enrutador principal
+
+// =========================================================================
+// Lógica de Enrutamiento dentro del Controlador
+// =========================================================================
+
+// Verificar si es una solicitud AJAX (generalmente de DataTables)
+if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+    // Es una solicitud AJAX, devolver solo JSON
+    header('Content-Type: application/json');
+
+    // Asumimos que si es AJAX y estamos en el work_order_controller,
+    // es para obtener los datos del listado.
+    if ($action === 'listing' || $action === null) { // Si es /reception/work_order/listing o solo /reception/work_order
+        echo json_encode(getDataTablesWorkOrders());
+    } else {
+        // Manejar otras acciones AJAX si las hubiera (ej. guardar, eliminar, etc.)
+        echo json_encode(['error' => 'Action not supported via AJAX for this controller.']);
+    }
+
+    exit; // Terminar la ejecución para evitar que se cargue la vista HTML
+}
+
+// Si no es una solicitud AJAX, es una carga de página normal
+// Aquí se determina qué vista cargar basado en la acción
+
+if ($action === 'listing') {
+    // Si la acción es 'listing', cargar la vista del listado de órdenes
+    // No necesitamos pasar datos específicos aquí para la tabla, ya que DataTables hará su propia llamada AJAX
+    require_once dirname(__DIR__, 2) . '/views/reception_work_order_listing.php';
+} elseif ($action === 'insert') {
+    // Si la acción es 'insert', cargar la vista para insertar una nueva orden
+    require_once dirname(__DIR__, 2) . '/views/work_order_insert.php';
+} elseif ($action === 'view' && $id !== null) {
+    // Si la acción es 'view' y hay un ID, cargar la vista de detalles
+    // Aquí podrías cargar datos específicos de la orden por $id
+    // $order_details = get_order_by_id($id);
+    require_once dirname(__DIR__, 2) . '/views/work_order_view.php'; // Asegúrate de tener esta vista
+} elseif ($action === 'edit' && $id !== null) {
+    // Si la acción es 'edit' y hay un ID, cargar la vista de edición
+    // Aquí podrías cargar datos específicos de la orden por $id
+    // $order_details = get_order_by_id($id);
+    require_once dirname(__DIR__, 2) . '/views/work_order_edit.php'; // Asegúrate de tener esta vista
+} else {
+    // Acción por defecto o no reconocida, redirigir al listado
+    header("Location: " . BASE_URL . "reception/work_order/listing");
+    exit;
+}
+?>
