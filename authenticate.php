@@ -15,15 +15,15 @@ require_once ROOT_PATH . 'includes/functions.php'; // Asegúrate que get_input()
 $is_logout_request = (isset($_GET['action']) && $_GET['action'] === 'logout');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Es una solicitud POST (intento de login)
-    $username = get_input('identity'); // Usar 'identity' si tu formulario lo envía así
+    // El campo del formulario se llama 'email', no 'identity'
+    $user_identifier = get_input('email');
     $password = get_input('password');
 
-    // Validación básica de entrada
-    if (empty($username) || empty($password)) {
-        $_SESSION['login_error'] = "Por favor, ingresa usuario/email y contraseña.";
+    // Ahora, usa $user_identifier en tu validación y consulta SQL
+    if (empty($user_identifier) || empty($password)) {
+        $_SESSION['login_error'] = "Por favor, ingresa tu email/usuario y contraseña.";
         require_once ROOT_PATH . 'views/login.php';
-        exit; // Salir después de mostrar el formulario con error
+        exit;
     }
 
     $db = new DatabaseConnection();
@@ -31,24 +31,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Consulta para obtener el usuario por username o email
     // Asumo que tu tabla 'users' tiene columnas 'username' y 'email'
     $sql = "SELECT id, username, email, password, role FROM users WHERE username = ? OR email = ?";
-    $stmt = $db->connection->prepare($sql); // Usar prepared statements para seguridad
-    $stmt->bind_param("ss", $username, $username); // Se usa 'username' dos veces para buscar en ambas columnas
+    $stmt = $db->connection->prepare($sql);
+    $stmt->bind_param("ss", $user_identifier, $user_identifier); // Se usa $user_identifier para ambos parámetros
     $stmt->execute();
     $result = $stmt->get_result();
 
     if ($result && $result->num_rows === 1) {
         $user = $result->fetch_assoc();
-        // Verificar la contraseña (usando password_verify si las contraseñas están hasheadas)
+        // Muy importante: usar password_verify() si las contraseñas están hasheadas en la DB
         if (password_verify($password, $user['password'])) {
-            // Login exitoso
+            // ... Lógica de login exitoso ...
             $_SESSION['user_id'] = $user['id'];
-            $_SESSION['username'] = $user['username'];
-            $_SESSION['role'] = $user['role'] ?? 'user'; // Asigna un rol por defecto si no existe
-            unset($_SESSION['login_error']); // Limpia cualquier error previo
-
+            $_SESSION['username'] = $user['username']; // Guardar el nombre de usuario real de la DB
+            $_SESSION['role'] = $user['role'] ?? 'user';
+            unset($_SESSION['login_error']);
             $db->close_connection();
             header("Location: " . BASE_URL . "reception/work_order/listing");
-            exit; // MUY IMPORTANTE: Salir después de la redirección
+            exit;
         }
     }
     
