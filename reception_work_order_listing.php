@@ -42,7 +42,7 @@
    <!-- Charts, optional -->
   <link rel="stylesheet" href="<?php echo CSS_PATH; ?>jquery-ui-1.8.15.custom.css"> <!-- jQuery UI, optional -->
   <link rel="stylesheet" href="<?php echo CSS_PATH; ?>application_custom.css"> <!-- Application Specific -->
-  <link rel="stylesheet" href="<?php echo CSS_PATH; ?>font-awesome.min.css"> <!-- font-awesome, optional -->
+  <link rel="stylesheet" href="https://netdna.bootstrapcdn.com/font-awesome/3.2.1/css/font-awesome.min.css"> <!-- font-awesome, para las 3 lines del menú -->
 
   <!-- end CSS-->
   <!-- Custom CSS, Javascripts and other head code-->
@@ -508,9 +508,9 @@
 															</div>
                         <!-- General Content display-->
                         <div class='grid_12'></div>    
-  	<script defer src="<?php echo JS_PATH; ?>query.dataTables-1.9.4.min.js"></script> <!-- Tables -->
+  	<script defer src="<?php echo JS_PATH; ?>jquery.dataTables-1.9.4.min.js"></script> <!-- Tables -->
   	<script defer src="<?php echo JS_PATH; ?>dataTables.SetFilteringDelay.min.js"></script> <!-- Delay -->
-    <script defer src="<?php echo JS_PATH; ?>query.simplemodal.1.4.2.js"></script>
+    <script defer src="<?php echo JS_PATH; ?>jquery.simplemodal.1.4.2.js"></script>
     <div id="dialog" title="Confirmación" style="text-align:center;display:none;"><br>Seguro que desea borrar la Orden de Trabajo</div> 
     <div id="container-internal-folio"></div> 
     <div id="container-work-order-log"></div>
@@ -581,14 +581,14 @@
 
   <!-- scripts concatenated and minified via ant build script-->
   <script defer src="<?php echo JS_PATH; ?>plugins.js"></script> <!-- lightweight wrapper for consolelog, optional -->
-  <script defer src="<?php echo JS_PATH; ?>query-ui-1.8.15.custom.min.js"></script> <!-- jQuery UI -->
-  <script defer src="<?php echo JS_PATH; ?>query.notifications.js"></script> <!-- Notifications  -->
+  <script defer src="<?php echo JS_PATH; ?>jquery-ui-1.8.15.custom.min.js"></script> <!-- jQuery UI -->
+  <script defer src="<?php echo JS_PATH; ?>jquery.notifications.js"></script> <!-- Notifications  -->
   <!--<script defer src="<?php echo JS_PATH; ?>mylibs/jquery.uniform.min.js"></script> Uniform (Look & Feel from forms) removed for cart-->
   <script defer src="<?php echo JS_PATH; ?>jquery.validate.js"></script> <!-- Validation from forms -->
-  <script defer src="<?php echo JS_PATH; ?>query.tipsy.js"></script> <!-- Tooltips -->
+  <script defer src="<?php echo JS_PATH; ?>jquery.tipsy.js"></script> <!-- Tooltips -->
   <script defer src="<?php echo JS_PATH; ?>excanvas.js"></script> <!-- Charts -->
-  <script defer src="<?php echo JS_PATH; ?>query.visualize.js"></script> <!-- Charts -->
-  <script defer src="<?php echo JS_PATH; ?>query.slidernav.min.js"></script> <!-- Contact List -->
+  <script defer src="<?php echo JS_PATH; ?>jquery.visualize.js"></script> <!-- Charts -->
+  <script defer src="<?php echo JS_PATH; ?>jquery.slidernav.min.js"></script> <!-- Contact List -->
   <script defer src="<?php echo JS_PATH; ?>common.js"></script> <!-- Generic functions -->
   <script defer src="<?php echo JS_PATH; ?>script.js"></script> <!-- Generic scripts -->
   	<script type="text/javascript" src="<?php echo JS_PATH; ?>breakpoints.js"></script>
