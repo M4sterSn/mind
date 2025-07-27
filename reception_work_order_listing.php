@@ -1002,7 +1002,7 @@
 		window.dTables = $('#table-list').dataTable({
 		    "bProcessing": true,
 		    "bServerSide": true,
-		    "sAjaxSource": "reception/work_order/ajx_work_orders_list",
+		    "sAjaxSource": "url": "<?php echo BASE_URL; ?>reception/work_order/ajx_work_orders_list",,
 		    "sServerMethod": "POST",
 		    "sPaginationType": "full_numbers",
 		    "bJQueryUI": false,
