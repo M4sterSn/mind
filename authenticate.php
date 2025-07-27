@@ -1,102 +1,76 @@
 <?php
 // C:\xampp\htdocs\labmind\modules\auth\authenticate.php
 
-// 1. Incluir config.php para definir ROOT_PATH y las constantes de la base de datos.
-// Se usa dirname(__DIR__, 2) porque ROOT_PATH aún no está definida en este punto.
+// Incluir config.php para definir ROOT_PATH y constantes de DB
 require_once dirname(__DIR__, 2) . '/config.php';
 
-// Ahora que config.php ha sido incluido, ROOT_PATH ya está definida y disponible.
-
-// 2. Incluir db_connection.php usando ROOT_PATH.
-// db_connection.php está en la carpeta 'includes' que está en la raíz del proyecto.
+// Incluir las clases y funciones necesarias
 require_once ROOT_PATH . 'includes/db_connection.php';
+require_once ROOT_PATH . 'includes/auth_middleware.php'; // Si tienes funciones aquí, como get_input, etc.
+require_once ROOT_PATH . 'includes/functions.php'; // Asegúrate que get_input() esté aquí si la usas
 
-// 3. Incluir auth_middleware.php usando ROOT_PATH.
-// auth_middleware.php también está en la carpeta 'includes'.
-require_once ROOT_PATH . 'includes/auth_middleware.php';
+// NO debe haber llamadas a auth_middleware::check_session(); aquí.
+// Este controlador es para manejar la autenticación en sí misma.
 
-// Obtener la conexión a la base de datos
-$db = new DatabaseConnection(); // <--- ESTO ES LO CORRECTO
+$is_logout_request = (isset($_GET['action']) && $_GET['action'] === 'logout');
 
-// Detectar si la acción es 'logout' a través del enrutador
-$is_logout_request = (isset($module) && $module === 'logout');
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$is_logout_request) {
-    // --- Lógica de Inicio de Sesión (solo para solicitudes POST que no son logout) ---
-    $identity = get_input('identity'); // 'username' o 'email'
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Es una solicitud POST (intento de login)
+    $username = get_input('identity'); // Usar 'identity' si tu formulario lo envía así
     $password = get_input('password');
 
-    if (empty($identity) || empty($password)) {
-        // CORRECCIÓN AQUÍ: Cambiar el orden de los argumentos a (tipo, mensaje)
-        set_session_message("error", "Por favor, ingresa tu usuario y contraseña.");
-        redirect(BASE_URL . 'login');
+    // Validación básica de entrada
+    if (empty($username) || empty($password)) {
+        $_SESSION['login_error'] = "Por favor, ingresa usuario/email y contraseña.";
+        require_once ROOT_PATH . 'views/login.php';
+        exit; // Salir después de mostrar el formulario con error
     }
 
-    // Preparar la consulta SQL para buscar al usuario por username
-    $stmt = $conn->prepare("SELECT id, username, password_hash, role FROM users WHERE username = ? AND is_active = 1 LIMIT 1"); // <-- Usa $conn->prepare
-    if (!$stmt) {
-        // CORRECCIÓN AQUÍ: Cambiar el orden de los argumentos a (tipo, mensaje)
-        set_session_message("error", "Error interno del servidor al preparar consulta. Inténtalo de nuevo.");
-        error_log("Error al preparar la consulta de login: " . $conn->error); // <-- Usa $conn->error
-        redirect(BASE_URL . 'login');
-    }
+    $db = new DatabaseConnection();
 
-    $stmt->bind_param("s", $identity);
+    // Consulta para obtener el usuario por username o email
+    // Asumo que tu tabla 'users' tiene columnas 'username' y 'email'
+    $sql = "SELECT id, username, email, password, role FROM users WHERE username = ? OR email = ?";
+    $stmt = $db->connection->prepare($sql); // Usar prepared statements para seguridad
+    $stmt->bind_param("ss", $username, $username); // Se usa 'username' dos veces para buscar en ambas columnas
     $stmt->execute();
     $result = $stmt->get_result();
 
-    if ($result->num_rows === 1) {
+    if ($result && $result->num_rows === 1) {
         $user = $result->fetch_assoc();
-
-        // Verificar la contraseña hasheada
-        if (password_verify($password, $user['password_hash'])) {
-            // Autenticación exitosa
+        // Verificar la contraseña (usando password_verify si las contraseñas están hasheadas)
+        if (password_verify($password, $user['password'])) {
+            // Login exitoso
             $_SESSION['user_id'] = $user['id'];
             $_SESSION['username'] = $user['username'];
-            $_SESSION['user_role'] = $user['role'];
-            $_SESSION['logged_in'] = true; // Flag para indicar sesión activa
+            $_SESSION['role'] = $user['role'] ?? 'user'; // Asigna un rol por defecto si no existe
+            unset($_SESSION['login_error']); // Limpia cualquier error previo
 
-            set_session_message("success", "¡Bienvenido, " . htmlspecialchars($user['username']) . "!");
-            redirect(BASE_URL . 'reception_work_order_listing'); // Redirigir al dashboard
-        } else {
-            // Contraseña incorrecta
-            // CORRECCIÓN AQUÍ: Cambiar el orden de los argumentos a (tipo, mensaje)
-            set_session_message("error", "Credenciales incorrectas.");
-            redirect(BASE_URL . 'login');
+            $db->close_connection();
+            header("Location: " . BASE_URL . "reception/work_order/listing");
+            exit; // MUY IMPORTANTE: Salir después de la redirección
         }
-    } else {
-        // Usuario no encontrado o inactivo
-        // CORRECCIÓN AQUÍ: Cambiar el orden de los argumentos a (tipo, mensaje)
-        set_session_message("error", "Credenciales incorrectas.");
-        redirect(BASE_URL . 'login');
     }
-
-    $stmt->close();
-    $conn->close(); // <-- Usa $conn->close (Cerrar la conexión DB)
-
-} elseif ($is_logout_request) {
-    // --- Lógica de Cierre de Sesión ---
-    if (isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true) {
-        // Destruir todas las variables de sesión
-        $_SESSION = array();
-
-        // Destruir la cookie de sesión si existe
-        if (ini_get("session.use_cookies")) {
-            $params = session_get_cookie_params();
-            setcookie(session_name(), '', time() - 42000,
-                $params["path"], $params["domain"],
-                $params["secure"], $params["httponly"]
-            );
-        }
-
-        // Finalmente, destruir la sesión
-        session_destroy();
-        // CORRECCIÓN AQUÍ: Cambiar el orden de los argumentos a (tipo, mensaje)
-        set_session_message("info", "Has cerrado sesión correctamente.");
-    }
-    redirect(BASE_URL . 'login'); // Siempre redirigir a la página de login después de logout
+    
+    // Si las credenciales son incorrectas (usuario no encontrado o contraseña no coincide)
+    $_SESSION['login_error'] = "Usuario o contraseña incorrectos.";
+    $db->close_connection();
+    require_once ROOT_PATH . 'views/login.php'; // Mostrar el formulario de login con el error
+    exit; // Salir después de incluir la vista
+} elseif ($is_logout_request) { // Solo si es una solicitud GET para 'logout'
+    // Es una solicitud de logout
+    session_destroy();
+    session_unset();
+    header("Location: " . BASE_URL . "auth/authenticate"); // Redirigir al login después de logout
+    exit;
 } else {
-    // Si se accede a authenticate.php directamente sin POST y no es logout, redirigir a login
-    redirect(BASE_URL . 'login');
+    // Es una solicitud GET (carga inicial de la página de login)
+    // Mostrar el formulario de login
+    unset($_SESSION['login_error']); // Limpiar errores previos al cargar la página por primera vez
+    require_once ROOT_PATH . 'views/login.php';
+    exit; // Salir después de incluir la vista
 }
+
+// Nota: No debe haber más código aquí que no sea alcanzable por los exit;
+// Esto es para asegurar que solo una vista se cargue o una redirección ocurra.
 ?>
