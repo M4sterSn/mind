@@ -1,18 +1,22 @@
 <?php
-/**
- * Controlador de autenticación para el sistema LabMind.
- * Maneja el inicio de sesión y el cierre de sesión.
- */
+// C:\xampp\htdocs\labmind\modules\auth\authenticate.php
 
-// Asegúrate de que config.php, db_connection.php y functions.php estén incluidos
-if (!defined('BASE_URL')) {
-    require_once dirname(dirname(__DIR__)) . '/config.php';
-}
-require_once INCLUDES_PATH . 'db_connection.php'; // Necesario para interactuar con la DB
-require_once INCLUDES_PATH . 'functions.php';    // Necesario para redirect, set_session_message, get_input, etc.
+// 1. Incluir config.php para definir ROOT_PATH y las constantes de la base de datos.
+// Se usa dirname(__DIR__, 2) porque ROOT_PATH aún no está definida en este punto.
+require_once dirname(__DIR__, 2) . '/config.php';
+
+// Ahora que config.php ha sido incluido, ROOT_PATH ya está definida y disponible.
+
+// 2. Incluir db_connection.php usando ROOT_PATH.
+// db_connection.php está en la carpeta 'includes' que está en la raíz del proyecto.
+require_once ROOT_PATH . 'includes/db_connection.php';
+
+// 3. Incluir auth_middleware.php usando ROOT_PATH.
+// auth_middleware.php también está en la carpeta 'includes'.
+require_once ROOT_PATH . 'includes/auth_middleware.php';
 
 // Obtener la conexión a la base de datos
-$conn = get_db_connection(); // ¡CRÍTICO: Asegúrate de tener esta línea!
+$db = new DatabaseConnection(); // <--- ESTO ES LO CORRECTO
 
 // Detectar si la acción es 'logout' a través del enrutador
 $is_logout_request = (isset($module) && $module === 'logout');
