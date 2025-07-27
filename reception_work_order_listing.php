@@ -267,8 +267,8 @@
 			   <a href="javascript:void(0);" class="current"><img src="<?php echo IMG_PATH; ?>sofa.png">Recepción<span class="badge red"></span></a>
 				<ul class="sub">
 
-						<li><a href="<?php echo BASE_URL; ?>reception/work_order/insert"  >Orden de Trabajo</a></li>
-						<li><a href="<?php echo BASE_URL; ?>reception/work_order/listing"  >Listado de Ordenes</a></li>
+						<li><a href="<?php echo BASE_URL; ?>reception/work_order/insert" >Orden de Trabajo</a></li>
+						<li><a href="<?php echo BASE_URL; ?>reception/work_order/listing" >Listado de Ordenes</a></li>
 						<li><a href="<?php echo BASE_URL; ?>reception/estimate/listing" >Listado de Cotizaciones</a></li>
 						<li><a href="<?php echo BASE_URL; ?>reception/cash_fund/listing">Salidas de Caja</a></li>
 
@@ -1002,8 +1002,8 @@
 		window.dTables = $('#table-list').dataTable({
 		    "bProcessing": true,
 		    "bServerSide": true,
-		    "sAjaxSource": "url": "<?php echo BASE_URL; ?>reception/work_order/ajx_work_orders_list",,
-		    "sServerMethod": "POST",
+			"sAjaxSource": "/labmind/modules/reception/work_order_controller.php?action=ajx_work_orders_list",
+			"sServerMethod": "POST",
 		    "sPaginationType": "full_numbers",
 		    "bJQueryUI": false,
 		    "sDom": '<"top"lf<"clear">>rt<"block-actions"ip>',
